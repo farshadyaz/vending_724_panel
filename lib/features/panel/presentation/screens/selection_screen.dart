@@ -10,6 +10,8 @@ import '../widgets/header_widget.dart';
 import '../widgets/cart_strip_widget.dart';
 import '../widgets/checkout_bar_widget.dart';
 import '../widgets/ad_slider_widget.dart';
+import '../widgets/guide_widget.dart'; 
+import '../../../admin/presentation/screens/admin_dashboard_screen.dart';
 
 class SelectionScreen extends StatefulWidget {
   const SelectionScreen({super.key});
@@ -29,8 +31,9 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
   
   // متغیرهای حالت ادمین
   bool _isAdminMode = false;
+  bool _justEnteredAdminMode = false; // پرچم جلوگیری از کلیک ناخواسته پس از رها کردن انگشت
   Timer? _adminHoldTimer;
-  final String _correctAdminPin = '4848'; // رمز پیش‌فرض برای این فاز
+  final String _correctAdminPin = '4848';
   
   final List<Map<String, dynamic>> _cart = [];
   final int _maxCartCapacity = 5;
@@ -58,12 +61,10 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
   void _onDigitPressed(String digit) {
     setState(() {
       if (_isAdminMode) {
-        // در حالت ادمین، سقف ورود ۴ رقم است
         if (_currentInput.length < 4) {
           _currentInput += digit;
         }
       } else {
-        // حالت عادی: سقف ورود ۲ رقم
         if (_currentInput.length >= 2) return;
         _currentInput += digit;
         _displayedProduct = null;
@@ -73,14 +74,14 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
 
         if (_currentInput.length == 2) {
           _pulseController.stop();
-          _pulseController.value = 1.0;
+          _pulseController.reset();
           _isInputConfirmed = true;
           _fetchProduct();
         } else {
           _pulseController.repeat(reverse: true);
           _debounceTimer = Timer(const Duration(milliseconds: 2500), () {
             _pulseController.stop();
-            _pulseController.value = 1.0;
+            _pulseController.reset();
             setState(() => _isInputConfirmed = true);
             _fetchProduct();
           });
@@ -94,12 +95,13 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
       _adminHoldTimer = Timer(const Duration(seconds: 3), () {
         setState(() {
           _isAdminMode = true;
+          _justEnteredAdminMode = true; // فعال‌سازی پرچم برای نادیده گرفتن رویداد Tap هنگام برداشتن انگشت
           _currentInput = ''; 
           _displayedProduct = null;
         });
         _debounceTimer?.cancel();
         _pulseController.stop();
-        _pulseController.value = 1.0;
+        _pulseController.reset();
       });
     }
   }
@@ -110,6 +112,12 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
 
   void _onGreenTap() {
     _adminHoldTimer?.cancel();
+
+    // اگر تازه از حالت ۳ ثانیه نگه داشتن خارج شده‌ایم، این کلیک (که ناشی از برداشتن انگشت است) را نادیده بگیر
+    if (_justEnteredAdminMode) {
+      _justEnteredAdminMode = false;
+      return;
+    }
 
     if (_isAdminMode) {
       if (_currentInput == _correctAdminPin) {
@@ -125,6 +133,10 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
           _isAdminMode = false;
           _currentInput = '';
         });
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const AdminDashboardScreen()),
+        );
       } else {
         debugPrint('LOG: MAINTENANCE_LOGIN_FAILED');
         ScaffoldMessenger.of(context).showSnackBar(
@@ -142,7 +154,7 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
       if (_currentInput.isNotEmpty && !_isInputConfirmed) {
         _debounceTimer?.cancel();
         _pulseController.stop();
-        _pulseController.value = 1.0;
+        _pulseController.reset();
         setState(() => _isInputConfirmed = true);
         _fetchProduct();
       }
@@ -152,7 +164,7 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
   void _onRedButtonPressed() {
     _debounceTimer?.cancel();
     _pulseController.stop();
-    _pulseController.value = 1.0;
+    _pulseController.reset();
     
     setState(() {
       if (_isAdminMode) {
@@ -221,64 +233,68 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
           textDirection: TextDirection.rtl,
           child: Column(
             children: [
-              const HeaderWidget(),
-              
-              // ۱. پنل تبلیغات: اجازه می‌دهیم در صورت وجود فضای خالی رشد کند
               const Expanded(
-                flex: 1,
+                flex: 10,
+                child: HeaderWidget(),
+              ),
+              const Expanded(
+                flex: 10,
                 child: AdSliderWidget(),
               ),
-              
-              // ۲. بخش تعاملی هوشمند: حداکثر ۴۸۰ پیکسل ارتفاع می‌گیرد، اما اگر فضا کم بود (مثل تست ویندوز) به نرمی کوچک می‌شود
-              Flexible(
-                flex: 4, 
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 480),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          child: NumpadWidget(
-                            currentInput: _currentInput,
-                            isInputConfirmed: _isInputConfirmed,
-                            isAdminMode: _isAdminMode,
-                            pulseAnimation: _pulseAnimation,
-                            onDigitPressed: _onDigitPressed,
-                            onGreenTap: _onGreenTap,
-                            onGreenTapDown: _onGreenTapDown,
-                            onGreenTapUpCancel: _onGreenTapUpCancel,
-                            onRedPressed: _onRedButtonPressed,
-                          ),
+              Expanded(
+                flex: 40,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch, 
+                    children: [
+                      Expanded(
+                        flex: 1, 
+                        child: NumpadWidget(
+                          currentInput: _currentInput,
+                          isInputConfirmed: _isInputConfirmed,
+                          isAdminMode: _isAdminMode,
+                          pulseAnimation: _pulseAnimation,
+                          onDigitPressed: _onDigitPressed,
+                          onGreenTap: _onGreenTap,
+                          onGreenTapDown: _onGreenTapDown,
+                          onGreenTapUpCancel: _onGreenTapUpCancel,
+                          onRedPressed: _onRedButtonPressed,
                         ),
-                        const SizedBox(width: 16), // جلوگیری از چسبیدن کیپد به کارت
-                        Expanded(
-                          child: ProductCardWidget(
-                            displayedProduct: _displayedProduct,
-                            isSearching: _isSearching,
-                            cartLength: _cart.length,
-                            maxCartCapacity: _maxCartCapacity,
-                            onAddToCart: _addToCart,
-                          ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        flex: 1, 
+                        child: ProductCardWidget(
+                          displayedProduct: _displayedProduct,
+                          isSearching: _isSearching,
+                          cartLength: _cart.length,
+                          maxCartCapacity: _maxCartCapacity,
+                          onAddToCart: _addToCart,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              
-              const SizedBox(height: 12),
-              
-              // ۳. نوار سبد خرید و پرداخت
-              CartStripWidget(
-                cart: _cart,
-                maxCartCapacity: _maxCartCapacity,
-                onRemoveFromCart: _removeFromCart,
+              const Expanded(
+                flex: 15,
+                child: GuideWidget(),
               ),
-              CheckoutBarWidget(
-                cart: _cart,
-                onCheckout: _cart.isEmpty ? null : _onCheckout,
+              Expanded(
+                flex: 15,
+                child: CartStripWidget(
+                  cart: _cart,
+                  maxCartCapacity: _maxCartCapacity,
+                  onRemoveFromCart: _removeFromCart,
+                ),
+              ),
+              Expanded(
+                flex: 10,
+                child: CheckoutBarWidget(
+                  cart: _cart,
+                  onCheckout: _cart.isEmpty ? null : _onCheckout,
+                ),
               ),
             ],
           ),

@@ -29,11 +29,11 @@ class NumpadWidget extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.ltr,
       child: Padding(
-        padding: const EdgeInsets.all(12.0),
+        // پدینگ افقی بیشتر شد تا دکمه‌ها از عرض خیلی کشیده نشوند
+        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // اضافه شدن FittedBox برای جلوگیری قطعی از بیرون‌زدگی در حالت ۴ رقمی
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Row(
@@ -43,13 +43,13 @@ class NumpadWidget extends StatelessWidget {
                     : _buildNormalInputBoxes(),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16), // فاصله کمی کمتر شد
             Expanded(
               child: GridView.count(
                 crossAxisCount: 3,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 1.1,
+                mainAxisSpacing: 8, // فاصله عمودی کمتر شد
+                crossAxisSpacing: 8, // فاصله افقی کمتر شد
+                childAspectRatio: 1.4, // دکمه‌ها مستطیلی‌تر و جمع‌وجورتر شدند
                 physics: const NeverScrollableScrollPhysics(),
                 children: [
                   for (var i = 1; i <= 9; i++) _buildKey(i.toString()),
@@ -58,7 +58,7 @@ class NumpadWidget extends StatelessWidget {
                     builder: (context, child) => Transform.scale(
                       scale: pulseAnimation.value,
                       child: _buildActionKey(
-                        content: const Text('تایید', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+                        content: const Text('تایید', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                         color: Colors.green.shade600,
                         onTap: onGreenTap,
                         onTapDown: onGreenTapDown,
@@ -68,7 +68,7 @@ class NumpadWidget extends StatelessWidget {
                   ),
                   _buildKey('0'),
                   _buildActionKey(
-                    content: const Icon(Icons.backspace_outlined, color: Colors.white, size: 26),
+                    content: const Icon(Icons.backspace_outlined, color: Colors.white, size: 22), // سایز آیکون بهینه‌تر شد
                     color: Colors.red.shade400,
                     onTap: onRedPressed,
                   ),
@@ -83,8 +83,8 @@ class NumpadWidget extends StatelessWidget {
 
   List<Widget> _buildAdminInputBoxes() {
     return [
-      const Icon(Icons.lock_outline, color: Colors.blueGrey, size: 28),
-      const SizedBox(width: 12),
+      const Icon(Icons.lock_outline, color: Colors.blueGrey, size: 24),
+      const SizedBox(width: 8),
       ...List.generate(4, (index) {
         bool isFilled = currentInput.length > index;
         return _buildInputBox(
@@ -92,8 +92,8 @@ class NumpadWidget extends StatelessWidget {
           isFilled: isFilled,
           isConfirmed: false,
           isHidden: false,
-          size: 50, // سایز بهینه شده
-          fontSize: 32,
+          size: 32, // سایز مینیمال‌تر
+          fontSize: 20, 
         );
       })
     ];
@@ -106,16 +106,16 @@ class NumpadWidget extends StatelessWidget {
         isFilled: currentInput.isNotEmpty,
         isConfirmed: isInputConfirmed,
         isHidden: false,
-        size: 60,
-        fontSize: 28,
+        size: 40, // سایز مینیمال‌تر
+        fontSize: 20, 
       ),
       _buildInputBox(
         char: currentInput.length > 1 ? currentInput[1] : '',
         isFilled: currentInput.length > 1,
         isConfirmed: isInputConfirmed,
         isHidden: isInputConfirmed && currentInput.length == 1,
-        size: 60,
-        fontSize: 28,
+        size: 40, 
+        fontSize: 20, 
       ),
     ];
   }
@@ -133,22 +133,22 @@ class NumpadWidget extends StatelessWidget {
       curve: Curves.easeInOut,
       width: isHidden ? 0 : size,
       height: size,
-      margin: EdgeInsets.symmetric(horizontal: isHidden ? 0 : 6),
+      margin: EdgeInsets.symmetric(horizontal: isHidden ? 0 : 4), // مارجین باکس‌ها کمی کمتر شد
       decoration: BoxDecoration(
         color: isHidden ? Colors.transparent : Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10), // گردی ملایم‌تر
         border: Border.all(
           color: isHidden 
               ? Colors.transparent 
               : (isConfirmed ? Colors.green.shade500 : (isFilled ? Colors.blue.shade400 : Colors.grey.shade300)),
-          width: isHidden ? 0.0 : (isFilled || isConfirmed ? 2.5 : 1.0),
+          width: isHidden ? 0.0 : (isFilled || isConfirmed ? 2.0 : 1.0),
         ),
         boxShadow: [
           BoxShadow(
             color: (isConfirmed && !isHidden) 
                 ? Colors.green.withValues(alpha: 0.2) 
                 : Colors.transparent,
-            blurRadius: (isConfirmed && !isHidden) ? 10 : 0,
+            blurRadius: (isConfirmed && !isHidden) ? 8 : 0,
           )
         ],
       ),
@@ -157,7 +157,7 @@ class NumpadWidget extends StatelessWidget {
           char,
           style: TextStyle(
             fontSize: fontSize,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.bold,
             color: isHidden ? Colors.transparent : Colors.black87,
             height: 1.5,
           ),
@@ -169,13 +169,13 @@ class NumpadWidget extends StatelessWidget {
   Widget _buildKey(String text) {
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(10),
       elevation: 0.5,
       child: InkWell(
         onTap: () => onDigitPressed(text),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: Center(
-          child: Text(text, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w500)),
+          child: Text(text, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)), // فونت مینیمال‌تر
         ),
       ),
     );
@@ -190,14 +190,14 @@ class NumpadWidget extends StatelessWidget {
   }) {
     return Material(
       color: color,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(10),
       elevation: 0.5,
       child: InkWell(
         onTap: onTap,
         onTapDown: onTapDown,
         onTapUp: (_) => onTapUpCancel?.call(),
         onTapCancel: onTapUpCancel,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: Center(child: content),
       ),
     );
