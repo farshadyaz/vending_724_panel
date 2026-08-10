@@ -163,8 +163,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
               ),
               const SizedBox(height: 16),
+              // اصلاح اخطار Deprecated: جایگزینی value با initialValue
               DropdownButtonFormField<String>(
-                value: _selectedRole,
+                initialValue: _selectedRole, // <-- تغییر اعمال شده
                 decoration: InputDecoration(
                   labelText: 'نقش کاربر',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -208,7 +209,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 }),
               ),
               const SizedBox(height: 16),
-              // استفاده از shrinkWrap به جای SizedBox با ارتفاع ثابت برای جلوگیری از بیرون‌زدگی
               GridView.count(
                 shrinkWrap: true,
                 crossAxisCount: 3,
@@ -270,7 +270,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       {'id': 8, 'title': 'لاگ‌های سیستم پنل', 'icon': Icons.text_snippet_outlined, 'roles': ['technician']},
       {'id': 9, 'title': 'خطا / لاگ برد الکترونیکی', 'icon': Icons.bug_report_outlined, 'roles': ['technician']},
       {'id': 10, 'title': 'پنل تنظیمات اس‌ام‌اس', 'icon': Icons.sms_outlined, 'roles': ['owner', 'technician']},
-      {'id': 11, 'title': 'مدیریت کاربران', 'icon': Icons.manage_accounts_outlined, 'roles': ['owner', 'technician']}, // گزینه جدید مدیریت کاربران
+      {'id': 11, 'title': 'مدیریت کاربران', 'icon': Icons.manage_accounts_outlined, 'roles': ['owner', 'technician']},
     ];
 
     final permittedCards = allCards.where((card) => (card['roles'] as List).contains(_selectedRole)).toList();
