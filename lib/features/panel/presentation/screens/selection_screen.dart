@@ -9,6 +9,7 @@ import '../widgets/product_card_widget.dart';
 import '../widgets/header_widget.dart';
 import '../widgets/cart_strip_widget.dart';
 import '../widgets/checkout_bar_widget.dart';
+import '../widgets/ad_slider_widget.dart';
 
 class SelectionScreen extends StatefulWidget {
   const SelectionScreen({super.key});
@@ -88,14 +89,12 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
     });
   }
 
-  // ۱. تشخیص شروع لمس روی دکمه سبز (برای ورود به ادمین)
   void _onGreenTapDown(TapDownDetails details) {
     if (_currentInput == '00' && !_isAdminMode) {
       _adminHoldTimer = Timer(const Duration(seconds: 3), () {
-        // پس از ۳ ثانیه نگه داشتن ممتد
         setState(() {
           _isAdminMode = true;
-          _currentInput = ''; // پاک کردن 00
+          _currentInput = ''; 
           _displayedProduct = null;
         });
         _debounceTimer?.cancel();
@@ -105,19 +104,16 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
     }
   }
 
-  // ۲. لغو تایمر ادمین در صورت برداشتن زودهنگام انگشت
   void _onGreenTapUpCancel() {
     _adminHoldTimer?.cancel();
   }
 
-  // ۳. کلیک عادی روی دکمه سبز
   void _onGreenTap() {
     _adminHoldTimer?.cancel();
 
     if (_isAdminMode) {
-      // بررسی پین‌کد
       if (_currentInput == _correctAdminPin) {
-        debugPrint('LOG [OP-1001]: MAINTENANCE_LOGIN_SUCCESS'); // ثبت در سیستم طبق معماری
+        debugPrint('LOG [OP-1001]: MAINTENANCE_LOGIN_SUCCESS'); 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('ورود موفق به پنل تکنسین (OP-1001)', style: TextStyle(fontFamily: 'Vazir', fontSize: 16)),
@@ -129,7 +125,6 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
           _isAdminMode = false;
           _currentInput = '';
         });
-        // هدایت به صفحه ادمین در آینده اینجا قرار می‌گیرد
       } else {
         debugPrint('LOG: MAINTENANCE_LOGIN_FAILED');
         ScaffoldMessenger.of(context).showSnackBar(
@@ -140,11 +135,10 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
           ),
         );
         setState(() {
-          _currentInput = ''; // پاک کردن رمز اشتباه
+          _currentInput = '';
         });
       }
     } else {
-      // منطق تایید در حالت خرید عادی
       if (_currentInput.isNotEmpty && !_isInputConfirmed) {
         _debounceTimer?.cancel();
         _pulseController.stop();
@@ -163,9 +157,8 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
     setState(() {
       if (_isAdminMode) {
         if (_currentInput.isEmpty) {
-          _isAdminMode = false; // خروج از حالت ادمین با زدن دکمه قرمز روی کادر خالی
+          _isAdminMode = false; 
         } else {
-          // پاک کردن یک کاراکتر (Backspace)
           _currentInput = _currentInput.substring(0, _currentInput.length - 1);
         }
       } else {
@@ -229,35 +222,55 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
           child: Column(
             children: [
               const HeaderWidget(),
-              Expanded(
-                flex: 5,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: NumpadWidget(
-                        currentInput: _currentInput,
-                        isInputConfirmed: _isInputConfirmed,
-                        isAdminMode: _isAdminMode,
-                        pulseAnimation: _pulseAnimation,
-                        onDigitPressed: _onDigitPressed,
-                        onGreenTap: _onGreenTap,
-                        onGreenTapDown: _onGreenTapDown,
-                        onGreenTapUpCancel: _onGreenTapUpCancel,
-                        onRedPressed: _onRedButtonPressed,
-                      ),
+              
+              // ۱. پنل تبلیغات: اجازه می‌دهیم در صورت وجود فضای خالی رشد کند
+              const Expanded(
+                flex: 1,
+                child: AdSliderWidget(),
+              ),
+              
+              // ۲. بخش تعاملی هوشمند: حداکثر ۴۸۰ پیکسل ارتفاع می‌گیرد، اما اگر فضا کم بود (مثل تست ویندوز) به نرمی کوچک می‌شود
+              Flexible(
+                flex: 4, 
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 480),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: NumpadWidget(
+                            currentInput: _currentInput,
+                            isInputConfirmed: _isInputConfirmed,
+                            isAdminMode: _isAdminMode,
+                            pulseAnimation: _pulseAnimation,
+                            onDigitPressed: _onDigitPressed,
+                            onGreenTap: _onGreenTap,
+                            onGreenTapDown: _onGreenTapDown,
+                            onGreenTapUpCancel: _onGreenTapUpCancel,
+                            onRedPressed: _onRedButtonPressed,
+                          ),
+                        ),
+                        const SizedBox(width: 16), // جلوگیری از چسبیدن کیپد به کارت
+                        Expanded(
+                          child: ProductCardWidget(
+                            displayedProduct: _displayedProduct,
+                            isSearching: _isSearching,
+                            cartLength: _cart.length,
+                            maxCartCapacity: _maxCartCapacity,
+                            onAddToCart: _addToCart,
+                          ),
+                        ),
+                      ],
                     ),
-                    Expanded(
-                      child: ProductCardWidget(
-                        displayedProduct: _displayedProduct,
-                        isSearching: _isSearching,
-                        cartLength: _cart.length,
-                        maxCartCapacity: _maxCartCapacity,
-                        onAddToCart: _addToCart,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
+              
+              const SizedBox(height: 12),
+              
+              // ۳. نوار سبد خرید و پرداخت
               CartStripWidget(
                 cart: _cart,
                 maxCartCapacity: _maxCartCapacity,
