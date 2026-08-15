@@ -26,10 +26,28 @@ class DatabaseHelper {
     return await databaseFactory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2, // ارتقا به نسخه ۲ برای اعمال تغییرات جدید (فیلد is_active)
         onCreate: _createDB,
+        onUpgrade: _upgradeDB, // اضافه شدن منطق مایگریشن
       ),
     );
+  }
+
+  // متد مایگریشن برای اعمال تغییرات روی دیتابیس موجود در سیستم شما
+  Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // چون در فاز توسعه هستیم، جداول را دراپ کرده و از نو با معماری جدید می‌سازیم
+      await db.execute('DROP TABLE IF EXISTS Order_Items');
+      await db.execute('DROP TABLE IF EXISTS Orders');
+      await db.execute('DROP TABLE IF EXISTS Rack_Addons_Mapper');
+      await db.execute('DROP TABLE IF EXISTS Machine_Addons');
+      await db.execute('DROP TABLE IF EXISTS Racks_Inventory');
+      await db.execute('DROP TABLE IF EXISTS Machine_Layout');
+      await db.execute('DROP TABLE IF EXISTS Products_Catalog');
+      await db.execute('DROP TABLE IF EXISTS System_Logs');
+      await db.execute('DROP TABLE IF EXISTS System_Configs');
+      await _createDB(db, newVersion);
+    }
   }
 
   Future _createDB(Database db, int version) async {
@@ -43,7 +61,8 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY,
         name $textType,
         image_path $textType,
-        base_price $intType
+        base_price $intType,
+        is_active $boolType DEFAULT 1
       )
     ''');
 

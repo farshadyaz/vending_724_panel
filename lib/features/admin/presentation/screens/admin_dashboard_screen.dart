@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../widgets/add_product_dialog.dart'; // <--- اضافه‌کردن ایمپورت پاپ‌آپ 
+import '../widgets/product_list_dialog.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -68,6 +70,24 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _openModulePopup(BuildContext context, String moduleTitle) {
+    if (moduleTitle == 'افزودن محصول') {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AddProductDialog(),
+      );
+      return;
+    } else if (moduleTitle == 'لیست محصولات') {
+      // مسیریابی به پاپ‌آپ لیست محصولات
+      showDialog(
+        context: context,
+        barrierDismissible: false, 
+        builder: (context) => const ProductListDialog(),
+      );
+      return;
+    }
+
+    // پاپ‌آپ پیش‌فرض برای سایر ماژول‌های ساخته نشده
     showDialog(
       context: context,
       builder: (context) => Directionality(
@@ -163,9 +183,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
               ),
               const SizedBox(height: 16),
-              // اصلاح اخطار Deprecated: جایگزینی value با initialValue
               DropdownButtonFormField<String>(
-                initialValue: _selectedRole, // <-- تغییر اعمال شده
+                initialValue: _selectedRole, 
                 decoration: InputDecoration(
                   labelText: 'نقش کاربر',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
