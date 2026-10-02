@@ -1,9 +1,10 @@
-import 'dart:io';
-import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../database/vending_repository.dart';
+import '../hardware/hardware_models.dart';
+import '../hardware/ndjson_client.dart';
 
+/// ارتباط TCP با برد الکترونیکی (پروتکل JSON تک‌خطی؛ ببینید hardware_models.dart)
 class HardwareClient {
   final String boardIp;
   final int port;
@@ -23,36 +24,33 @@ class HardwareClient {
     List<Map<String, dynamic>> items, {
     List<Map<String, dynamic>> addons = const [],
   }) async {
-    Socket? socket;
     try {
-      socket = await Socket.connect(boardIp, port, timeout: timeout);
-      
-      final payload = jsonEncode({
-        "order_id": orderId,
-        "commands": items,
-        "addons": addons,
-      });
+      final response = await NdjsonCall.request(
+        host: boardIp,
+        port: port,
+        payload: {
+          'type': HwProtocol.dispense,
+          'order_id': orderId,
+          'commands': items,
+          'addons': addons,
+        },
+        responseTimeout: timeout,
+      );
 
-      socket.write(payload);
-      
-      final responseData = await socket.first.timeout(timeout);
-      final responseString = utf8.decode(responseData);
-      final jsonResponse = jsonDecode(responseString);
+      // خطای دیتابیس هنگام قرنطینه نباید پاسخ واقعی برد را از بین ببرد
+      try {
+        await _processHardwareQuarantine(response);
+      } catch (e) {
+        debugPrint('WARNING: quarantine bookkeeping failed: $e');
+      }
 
-      socket.destroy();
-      
-      await _processHardwareQuarantine(jsonResponse);
-      
-      return jsonResponse;
-
+      return response;
     } on TimeoutException {
-      socket?.destroy();
       return {
         "order_id": orderId,
         "status": "FATAL_TIMEOUT",
       };
     } catch (e) {
-      socket?.destroy();
       return {
         "order_id": orderId,
         "status": "CONNECTION_ERROR",
@@ -62,17 +60,19 @@ class HardwareClient {
   }
   
   Future<void> _processHardwareQuarantine(Map<String, dynamic> response) async {
-    if (response.containsKey('results')) {
-      List results = response['results'];
-      for (var result in results) {
-        if (result['status'] == 'MOTOR_JAM' && result['error_code'] == 'H-1001') {
-          int rackNumber = result['rack_number'];
-          
-          await _repository.quarantineRack(rackNumber);
-          final dbCheck = await _repository.checkRackStatus(rackNumber);
-          
-          debugPrint('CRITICAL ACTION: Rack $rackNumber quarantined in SQLite DB. Current DB Record: $dbCheck');
-        }
+    final results = response['results'];
+    if (results is! List) return;
+    for (final result in results) {
+      if (result is Map &&
+          result['status'] == 'MOTOR_JAM' &&
+          result['error_code'] == 'H-1001' &&
+          result['rack_number'] is int) {
+        final int rackNumber = result['rack_number'] as int;
+
+        await _repository.quarantineRack(rackNumber);
+        final dbCheck = await _repository.checkRackStatus(rackNumber);
+
+        debugPrint('CRITICAL ACTION: Rack $rackNumber quarantined in SQLite DB. Current DB Record: $dbCheck');
       }
     }
   }

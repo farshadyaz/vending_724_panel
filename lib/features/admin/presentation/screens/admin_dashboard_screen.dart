@@ -3,6 +3,7 @@ import '../widgets/add_product_dialog.dart';
 import '../widgets/product_list_dialog.dart';
 import '../widgets/rack_layout_dialog.dart';
 import '../widgets/machine_settings_dialog.dart';
+import '../widgets/network_settings_dialog.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -98,6 +99,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         context: context,
         barrierDismissible: false,
         builder: (context) => const RackLayoutDialog(),
+      );
+      return;
+    } else if (moduleTitle == 'تنظیمات شبکه / سرور') {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const NetworkSettingsDialog(),
       );
       return;
     }
