@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/utils/extensions.dart';
 
 class CheckoutBarWidget extends StatelessWidget {
   final List<Map<String, dynamic>> cart;
@@ -34,7 +35,7 @@ class CheckoutBarWidget extends StatelessWidget {
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
-                    '$totalPrice ریال',
+                    totalPrice.toRial,
                     style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
                   ),
                 ),

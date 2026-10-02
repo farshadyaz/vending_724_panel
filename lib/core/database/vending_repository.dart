@@ -12,6 +12,8 @@ class VendingRepository {
     
     await db.execute('DELETE FROM Racks_Inventory');
     await db.execute('DELETE FROM Products_Catalog');
+    await db.execute('DELETE FROM Machine_Layout');
+    await db.rawInsert('INSERT INTO Machine_Layout (shelf_number, columns_count) VALUES (?, ?)', [1, 10]);
 
     // مقدار is_active به صورت پیش‌فرض اضافه شد
     await db.rawInsert(
@@ -37,6 +39,20 @@ class VendingRepository {
   Future<List<Map<String, dynamic>>> checkRackStatus(int rackNumber) async {
     final db = await _dbHelper.database;
     return await db.rawQuery('SELECT rack_number, status FROM Racks_Inventory WHERE rack_number = ?', [rackNumber]);
+  }
+
+  // اطلاعات کامل یک رک برای صفحه خرید (نام، عکس، قیمت، موجودی، وضعیت، آدرس فیزیکی)؛ null = رک وجود ندارد
+  Future<Map<String, dynamic>?> fetchRackForSale(int rackNumber) async {
+    final db = await _dbHelper.database;
+    final rows = await db.rawQuery('''
+      SELECT r.rack_number, r.physical_address, r.current_price, r.stock, r.status,
+             p.name AS product_name, p.image_path AS image_path
+      FROM Racks_Inventory r
+      LEFT JOIN Products_Catalog p ON p.id = r.product_id
+      WHERE r.rack_number = ?
+    ''', [rackNumber]);
+    if (rows.isEmpty) return null;
+    return rows.first;
   }
 
   Future<void> addProduct(String name, String tempImagePath, int basePrice) async {
@@ -107,5 +123,168 @@ class VendingRepository {
         [name, price, id]
       );
     }
+  }
+
+  // --- ساختار دستگاه (تنظیمات دستگاه) ---
+
+  Future<List<Map<String, dynamic>>> fetchLayout() async {
+    final db = await _dbHelper.database;
+    return await db.rawQuery('SELECT * FROM Machine_Layout ORDER BY shelf_number ASC');
+  }
+
+  // اعمال ساختار جدید: columnsPerShelf[i] = تعداد رک طبقه i+1
+  //
+  // - رک‌هایی که جایشان در ساختار جدید هست، همان‌جا می‌مانند.
+  // - رک‌هایی که جایشان حذف می‌شود (مثلاً با کم کردن ستون‌های یک طبقه) همراه محصول، قیمت،
+  //   موجودی، وضعیت و افزودنی‌هایشان به خانه‌های آزاد منتقل می‌شوند؛ اول خانه‌های تازه
+  //   (مثلاً طبقه جدید)، بعد خانه‌های خالی قبلی.
+  // - اگر جای کافی نباشد و رکِ بدون جا موجودی داشته باشد، ذخیره رد می‌شود.
+  // - شماره رک‌ها همیشه ترتیبی از روی طبقه‌ها ساخته می‌شود و افزودنی‌های هر رک با شماره جدید منتقل می‌شوند.
+  //
+  // خروجی: error = null یعنی موفق؛ moved = تعداد رک‌های منتقل‌شده
+  Future<({String? error, int moved})> applyLayout(List<int> columnsPerShelf) async {
+    if (columnsPerShelf.isEmpty) return (error: 'حداقل یک طبقه لازم است', moved: 0);
+    if (columnsPerShelf.any((c) => c < 1)) return (error: 'هر طبقه باید حداقل یک رک داشته باشد', moved: 0);
+    if (columnsPerShelf.fold<int>(0, (a, b) => a + b) > 99) {
+      return (error: 'مجموع رک‌ها نباید بیشتر از ۹۹ باشد', moved: 0);
+    }
+
+    final db = await _dbHelper.database;
+    final oldLayout = await fetchLayout();
+    final oldCols = oldLayout.map((e) => e['columns_count'] as int).toList();
+    final racks = await db.rawQuery('SELECT * FROM Racks_Inventory ORDER BY physical_address ASC');
+
+    // افزودنی‌های هر رک بر اساس شماره قدیمی رک (برای انتقال همراه رک)
+    final mapperRows = await db.rawQuery(
+      'SELECT rack_number, addon_id, addon_value FROM Rack_Addons_Mapper ORDER BY id ASC',
+    );
+    final Map<int, List<Map<String, Object?>>> addonsByOldRack = {};
+    for (final m in mapperRows) {
+      addonsByOldRack.putIfAbsent(m['rack_number'] as int, () => <Map<String, Object?>>[]).add(m);
+    }
+
+    bool inLayout(List<int> cols, int shelf, int col) =>
+        shelf >= 1 && shelf <= cols.length && col >= 1 && col <= cols[shelf - 1];
+
+    // آدرس جدید ← ردیف رک
+    final Map<int, Map<String, Object?>> placed = {};
+    final List<Map<String, Object?>> orphans = [];
+    for (final r in racks) {
+      final addr = r['physical_address'] as int;
+      if (inLayout(columnsPerShelf, addr ~/ 1000, addr % 1000)) {
+        placed[addr] = r;
+      } else {
+        orphans.add(r);
+      }
+    }
+
+    int moved = 0;
+    if (orphans.isNotEmpty) {
+      final List<int> freeNew = []; // خانه‌های آزادِ تازه (در ساختار قبلی وجود نداشتند)
+      final List<int> freeOld = []; // خانه‌های خالیِ قبلی
+      for (int s = 1; s <= columnsPerShelf.length; s++) {
+        for (int c = 1; c <= columnsPerShelf[s - 1]; c++) {
+          final addr = s * 1000 + c;
+          if (placed.containsKey(addr)) continue;
+          if (inLayout(oldCols, s, c)) {
+            freeOld.add(addr);
+          } else {
+            freeNew.add(addr);
+          }
+        }
+      }
+      final targets = [...freeNew, ...freeOld];
+
+      final List<Map<String, Object?>> unplaced = [];
+      for (int i = 0; i < orphans.length; i++) {
+        if (i < targets.length) {
+          placed[targets[i]] = orphans[i];
+          moved++;
+        } else {
+          unplaced.add(orphans[i]);
+        }
+      }
+      if (unplaced.any((r) => (r['stock'] as int) > 0)) {
+        return (
+          error: 'جای کافی برای انتقال رک‌های دارای موجودی نیست؛ تعداد رک‌ها را بیشتر کنید',
+          moved: 0,
+        );
+      }
+    }
+
+    await db.transaction((txn) async {
+      await txn.rawDelete('DELETE FROM Rack_Addons_Mapper');
+      await txn.rawDelete('DELETE FROM Racks_Inventory');
+      await txn.rawDelete('DELETE FROM Machine_Layout');
+
+      for (int i = 0; i < columnsPerShelf.length; i++) {
+        await txn.rawInsert(
+          'INSERT INTO Machine_Layout (shelf_number, columns_count) VALUES (?, ?)',
+          [i + 1, columnsPerShelf[i]],
+        );
+      }
+
+      for (final entry in placed.entries) {
+        final addr = entry.key;
+        final r = entry.value;
+        final shelf = addr ~/ 1000;
+        final col = addr % 1000;
+        int before = 0;
+        for (int i = 0; i < shelf - 1; i++) {
+          before += columnsPerShelf[i];
+        }
+        final int newRackNumber = before + col;
+        await txn.rawInsert(
+          'INSERT INTO Racks_Inventory (rack_number, physical_address, product_id, current_price, stock, status) VALUES (?, ?, ?, ?, ?, ?)',
+          [newRackNumber, addr, r['product_id'], r['current_price'], r['stock'], r['status']],
+        );
+
+        // افزودنی‌های این رک با شماره جدید منتقل می‌شوند
+        final oldAddons = addonsByOldRack[r['rack_number'] as int] ?? const <Map<String, Object?>>[];
+        for (final m in oldAddons) {
+          await txn.rawInsert(
+            'INSERT INTO Rack_Addons_Mapper (rack_number, addon_id, addon_value) VALUES (?, ?, ?)',
+            [newRackNumber, m['addon_id'], m['addon_value']],
+          );
+        }
+      }
+    });
+    return (error: null, moved: moved);
+  }
+
+  // --- لایوت رک‌ها (محصول‌گذاری) ---
+
+  Future<List<Map<String, dynamic>>> fetchRacksWithProducts() async {
+    final db = await _dbHelper.database;
+    return await db.rawQuery('''
+      SELECT r.*, p.name AS product_name
+      FROM Racks_Inventory r
+      LEFT JOIN Products_Catalog p ON p.id = r.product_id
+      ORDER BY r.rack_number ASC
+    ''');
+  }
+
+  Future<void> saveRack({
+    required int rackNumber,
+    required int physicalAddress,
+    required int productId,
+    required int price,
+    required int stock,
+    required bool active,
+  }) async {
+    final db = await _dbHelper.database;
+    await db.rawInsert(
+      'INSERT OR REPLACE INTO Racks_Inventory (rack_number, physical_address, product_id, current_price, stock, status) VALUES (?, ?, ?, ?, ?, ?)',
+      [rackNumber, physicalAddress, productId, price, stock, active ? 1 : 0],
+    );
+  }
+
+  // خالی کردن رک؛ افزودنی‌های آن رک هم حذف می‌شود
+  Future<void> clearRack(int rackNumber) async {
+    final db = await _dbHelper.database;
+    await db.transaction((txn) async {
+      await txn.rawDelete('DELETE FROM Rack_Addons_Mapper WHERE rack_number = ?', [rackNumber]);
+      await txn.rawDelete('DELETE FROM Racks_Inventory WHERE rack_number = ?', [rackNumber]);
+    });
   }
 }

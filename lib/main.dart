@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'core/database/database_helper.dart';
-import 'core/database/vending_repository.dart';
+import 'core/database/default_seeder.dart';
 import 'core/bloc/machine/machine_bloc.dart';
 import 'features/panel/presentation/screens/selection_screen.dart';
+
+/// برای برگشت کامل به داده پیش‌فرض: یک‌بار true کنید، اجرا کنید، سپس دوباره false کنید.
+const bool kResetToDefaultSeed = false;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DatabaseHelper.instance.database;
-  
-  final repo = VendingRepository();
-  await repo.seedDummyData();
-  
+
+  // داده پیش‌فرض فقط وقتی دیتابیس خالی است ساخته می‌شود؛ با Hot Restart پاک نمی‌شود
+  await DefaultSeeder.run(forceReset: kResetToDefaultSeed);
+
   runApp(
         MaterialApp(
           debugShowCheckedModeBanner: false,

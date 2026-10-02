@@ -16,7 +16,13 @@ class HardwareClient {
     this.timeout = const Duration(seconds: 10),
   });
 
-  Future<Map<String, dynamic>> sendDispenseCommand(String orderId, List<Map<String, dynamic>> items) async {
+  /// items = کالاهای هر رک (commands)
+  /// addons = جمع تعداد هر افزودنی در کل سفارش (مثلاً [{addon_id: 1, cmd: '1', count: 2}])
+  Future<Map<String, dynamic>> sendDispenseCommand(
+    String orderId,
+    List<Map<String, dynamic>> items, {
+    List<Map<String, dynamic>> addons = const [],
+  }) async {
     Socket? socket;
     try {
       socket = await Socket.connect(boardIp, port, timeout: timeout);
@@ -24,6 +30,7 @@ class HardwareClient {
       final payload = jsonEncode({
         "order_id": orderId,
         "commands": items,
+        "addons": addons,
       });
 
       socket.write(payload);

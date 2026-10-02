@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import '../widgets/add_product_dialog.dart'; // <--- اضافه‌کردن ایمپورت پاپ‌آپ 
+import '../widgets/add_product_dialog.dart';
 import '../widgets/product_list_dialog.dart';
+import '../widgets/rack_layout_dialog.dart';
+import '../widgets/machine_settings_dialog.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -78,11 +80,24 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       );
       return;
     } else if (moduleTitle == 'لیست محصولات') {
-      // مسیریابی به پاپ‌آپ لیست محصولات
       showDialog(
         context: context,
-        barrierDismissible: false, 
+        barrierDismissible: false,
         builder: (context) => const ProductListDialog(),
+      );
+      return;
+    } else if (moduleTitle == 'تنظیمات دستگاه') {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const MachineSettingsDialog(),
+      );
+      return;
+    } else if (moduleTitle == 'تنظیمات لایوت (چیدمان) رک') {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const RackLayoutDialog(),
       );
       return;
     }
@@ -184,7 +199,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                initialValue: _selectedRole, 
+                initialValue: _selectedRole,
                 decoration: InputDecoration(
                   labelText: 'نقش کاربر',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -281,6 +296,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final List<Map<String, dynamic>> allCards = [
       {'id': 1, 'title': 'لیست محصولات', 'icon': Icons.list_alt_outlined, 'roles': ['operator', 'owner', 'technician']},
       {'id': 2, 'title': 'افزودن محصول', 'icon': Icons.add_box_outlined, 'roles': ['operator', 'owner', 'technician']},
+      {'id': 12, 'title': 'تنظیمات دستگاه', 'icon': Icons.settings_applications_outlined, 'roles': ['owner', 'technician']},
       {'id': 3, 'title': 'تنظیمات لایوت (چیدمان) رک', 'icon': Icons.grid_view_outlined, 'roles': ['operator', 'owner', 'technician']},
       {'id': 4, 'title': 'تنظیمات شبکه / سرور', 'icon': Icons.lan_outlined, 'roles': ['owner', 'technician']},
       {'id': 5, 'title': 'معرفی دستگاه پوز', 'icon': Icons.point_of_sale_outlined, 'roles': ['owner', 'technician']},
