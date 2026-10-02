@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/bloc/machine/machine_bloc.dart';
-import '../../../../core/bloc/machine/machine_event.dart';
 import '../../../../core/database/addon_repository.dart';
 import '../../../../core/database/settings_repository.dart';
 import '../../../../core/database/vending_repository.dart';
@@ -14,9 +13,11 @@ import '../widgets/header_widget.dart';
 import '../widgets/cart_strip_widget.dart';
 import '../widgets/checkout_bar_widget.dart';
 import '../widgets/ad_slider_widget.dart';
-import '../widgets/guide_widget.dart'; 
+import '../widgets/guide_widget.dart';
 import '../widgets/layout_selection_widget.dart';
 import '../widgets/admin_pin_dialog.dart';
+import '../controllers/checkout_controller.dart';
+import 'checkout_flow_screen.dart';
 import '../../../admin/presentation/screens/admin_dashboard_screen.dart';
 
 class SelectionScreen extends StatefulWidget {
@@ -43,7 +44,8 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
   Timer? _debounceTimer;
   Map<String, dynamic>? _displayedProduct;
   bool _isSearching = false;
-  
+  bool _checkingOut = false; // وقتی صفحه خرید باز است، دکمه پرداخت دوباره فعال نمی‌شود
+
   // متغیرهای حالت ادمین (حالت کیپد)
   bool _isAdminMode = false;
   bool _justEnteredAdminMode = false; // پرچم جلوگیری از کلیک ناخواسته پس از رها کردن انگشت
@@ -51,7 +53,7 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
 
   // ورود مخفی (حالت چیدمان): ۵ لمس سریع روی هدر
   final List<DateTime> _hiddenTaps = [];
-  
+
   final List<Map<String, dynamic>> _cart = [];
 
   late AnimationController _pulseController;
@@ -111,8 +113,10 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
       MaterialPageRoute(builder: (context) => const AdminDashboardScreen()),
     );
     if (!mounted) return;
-    // تنظیمات ممکن است در پنل مدیریت تغییر کرده باشد
+    // تنظیمات و رک‌ها ممکن است در پنل مدیریت تغییر کرده باشند (مثلاً شماره یا محصول رک)؛
+    // پس سبد قبلی خالی می‌شود تا کالایی با اطلاعات قدیمی فروخته نشود
     setState(() {
+      _cart.clear();
       _currentInput = '';
       _isInputConfirmed = false;
       _displayedProduct = null;
@@ -157,7 +161,7 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
         _currentInput += digit;
         _displayedProduct = null;
         _isInputConfirmed = false;
-        
+
         _debounceTimer?.cancel();
 
         if (_currentInput.length == 2) {
@@ -184,7 +188,7 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
         setState(() {
           _isAdminMode = true;
           _justEnteredAdminMode = true; // فعال‌سازی پرچم برای نادیده گرفتن رویداد Tap هنگام برداشتن انگشت
-          _currentInput = ''; 
+          _currentInput = '';
           _displayedProduct = null;
         });
         _debounceTimer?.cancel();
@@ -215,7 +219,7 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
       }
 
       if (_currentInput == _adminPin) {
-        debugPrint('LOG [OP-1001]: MAINTENANCE_LOGIN_SUCCESS'); 
+        debugPrint('LOG [OP-1001]: MAINTENANCE_LOGIN_SUCCESS');
         _toast('ورود موفق به پنل تکنسین (OP-1001)', color: Colors.green.shade700);
         setState(() {
           _isAdminMode = false;
@@ -244,11 +248,11 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
     _debounceTimer?.cancel();
     _pulseController.stop();
     _pulseController.reset();
-    
+
     setState(() {
       if (_isAdminMode) {
         if (_currentInput.isEmpty) {
-          _isAdminMode = false; 
+          _isAdminMode = false;
         } else {
           _currentInput = _currentInput.substring(0, _currentInput.length - 1);
         }
@@ -296,7 +300,7 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
     if (_currentInput.isEmpty || _currentInput == '00') return;
     final requestedInput = _currentInput;
     setState(() => _isSearching = true);
-    
+
     final rackNumber = int.tryParse(requestedInput) ?? 0;
     final product = await _loadProduct(rackNumber);
 
@@ -312,8 +316,10 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
 
   // حالت چیدمان: لمس یک رک → باز شدن کارت محصول → افزودن به سبد → بازگشت به چیدمان
   Future<void> _onLayoutRackTap(int rackNumber) async {
+    if (_checkingOut) return;
     final product = await _loadProduct(rackNumber);
-    if (!mounted) return;
+    // اگر وسط خواندن اطلاعات، صفحه خرید باز شده باشد، پنجره محصول روی آن باز نمی‌شود
+    if (!mounted || _checkingOut) return;
     setState(() => _displayedProduct = product);
 
     final bool? add = await showDialog<bool>(
@@ -398,14 +404,54 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
   void _removeFromCart(String tempId) {
     setState(() => _cart.removeWhere((item) => item['id'] == tempId));
   }
-  
-  void _onCheckout() {
-    // لیست سفارش برای برد: کالاهای هر رک + جمع تعداد هر افزودنی در کل سبد
+
+  // پرداخت: صفحه خرید (پرداخت با پوز ← تحویل با برد ← نتیجه) باز می‌شود و با نتیجه‌اش برمی‌گردد
+  Future<void> _onCheckout() async {
+    if (_checkingOut || _cart.isEmpty) return;
+    setState(() => _checkingOut = true);
+
     final orderId = 'ORD-${DateTime.now().millisecondsSinceEpoch}';
     final payload = OrderPayloadBuilder.build(orderId, _cart);
     debugPrint('LOG [ORDER_PAYLOAD]: ${jsonEncode(payload)}');
 
-    context.read<MachineBloc>().add(PaymentInitiated());
+    // صفحه خرید زیر BlocProvider نیست (مسیر جدید است)، پس خود bloc به آن داده می‌شود
+    final controller = CheckoutController(
+      orderId: orderId,
+      cart: List<Map<String, dynamic>>.from(_cart),
+      cartCapacity: _maxCartCapacity,
+      machineBloc: context.read<MachineBloc>(),
+    );
+
+    CheckoutOutcome? result;
+    try {
+      result = await Navigator.push<CheckoutOutcome>(
+        context,
+        MaterialPageRoute(builder: (_) => CheckoutFlowScreen(controller: controller)),
+      );
+    } catch (_) {
+      controller.dispose(); // باز کردن صفحه ناموفق بود؛ در حالت عادی خود صفحه کنترلر را می‌بندد
+      rethrow;
+    } finally {
+      if (mounted) setState(() => _checkingOut = false);
+    }
+    // اگر به هر دلیل نتیجه‌ای از مسیر برنگشت، نتیجه خود کنترلر (که ثبت شده) ملاک است
+    final CheckoutOutcome? outcome = result ?? controller.outcome;
+    if (!mounted || outcome == null) return;
+
+    setState(() {
+      if (outcome.clearCart) _cart.clear();
+      if (outcome.invalidRacks.isNotEmpty) {
+        _cart.removeWhere((item) => outcome.invalidRacks.contains(item['rack_number']));
+      }
+      // موجودی رک‌ها تغییر کرده است؛ ورودی کیپد پاک و چیدمان دوباره از دیتابیس خوانده می‌شود
+      _currentInput = '';
+      _isInputConfirmed = false;
+      _displayedProduct = null;
+      _layoutVersion++;
+    });
+
+    final message = outcome.message;
+    if (message != null) _toast(message, color: Colors.orange.shade800);
   }
 
   // ---------------- رابط ----------------
@@ -424,7 +470,7 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
   // حالت ۲: چیدمان رک‌ها (هر طبقه یک ردیف تمام‌عرض)
   Widget _buildLayoutMode() {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA), 
+      backgroundColor: const Color(0xFFF5F7FA),
       body: SafeArea(
         child: Directionality(
           textDirection: TextDirection.rtl,
@@ -462,7 +508,7 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
                 flex: 10,
                 child: CheckoutBarWidget(
                   cart: _cart,
-                  onCheckout: _cart.isEmpty ? null : _onCheckout,
+                  onCheckout: (_cart.isEmpty || _checkingOut) ? null : _onCheckout,
                 ),
               ),
             ],
@@ -475,7 +521,7 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
   // حالت ۱: کیپد و کارت محصول در کنار هم
   Widget _buildKeypadMode() {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA), 
+      backgroundColor: const Color(0xFFF5F7FA),
       body: SafeArea(
         child: Directionality(
           textDirection: TextDirection.rtl,
@@ -494,10 +540,10 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch, 
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(
-                        flex: 1, 
+                        flex: 1,
                         child: NumpadWidget(
                           currentInput: _currentInput,
                           isInputConfirmed: _isInputConfirmed,
@@ -512,7 +558,7 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
                       ),
                       const SizedBox(width: 16),
                       Expanded(
-                        flex: 1, 
+                        flex: 1,
                         child: ProductCardWidget(
                           displayedProduct: _displayedProduct,
                           isSearching: _isSearching,
@@ -541,7 +587,7 @@ class _SelectionScreenState extends State<SelectionScreen> with SingleTickerProv
                 flex: 10,
                 child: CheckoutBarWidget(
                   cart: _cart,
-                  onCheckout: _cart.isEmpty ? null : _onCheckout,
+                  onCheckout: (_cart.isEmpty || _checkingOut) ? null : _onCheckout,
                 ),
               ),
             ],

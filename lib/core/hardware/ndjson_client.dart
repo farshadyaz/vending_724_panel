@@ -22,7 +22,12 @@ class NdjsonCall {
 
   Socket? _socket;
   bool _cancelled = false;
+  bool _requestSent = false;
   late final Future<Map<String, dynamic>> future;
+
+  /// true = درخواست (حتی ناقص) روی اتصال نوشته شده؛ از این لحظه به بعد دستگاه ممکن است آن را اجرا کرده باشد.
+  /// false = اتصال برقرار نشد و مطمئنیم دستگاه چیزی دریافت نکرده است.
+  bool get requestSent => _requestSent;
 
   NdjsonCall({
     required this.host,
@@ -60,6 +65,7 @@ class NdjsonCall {
         throw const CallCancelledException();
       }
 
+      _requestSent = true;
       socket.write('${jsonEncode(payload)}\n');
       await socket.flush();
 

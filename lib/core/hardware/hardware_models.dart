@@ -50,7 +50,12 @@ class PaymentResult {
 class RefundResult {
   final bool success;
   final String message;
-  const RefundResult(this.success, [this.message = '']);
+
+  /// true = نتیجه بازگشت وجه نامعلوم است (درخواست فرستاده شد ولی پاسخ قطعی نرسید)؛
+  /// ممکن است پوز مبلغ را برگردانده باشد، پس نباید بدون بررسی دستی دوباره برگشت زده شود.
+  final bool uncertain;
+
+  const RefundResult(this.success, [this.message = '', this.uncertain = false]);
 }
 
 // ---------------- تحویل کالا ----------------
