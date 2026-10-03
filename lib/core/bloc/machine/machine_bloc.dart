@@ -26,14 +26,14 @@ class MachineBloc extends Bloc<MachineEvent, MachineState> {
     on<HardwareTimeoutOccurred>((event, emit) {
       if (state is MachineDispensingState) {
         emit(MachineFatalErrorState());
-        // طبق سند معماری: انتقال به پایان با پرچم ریفاند کامل پس از خطای مهلک
-        emit(const MachineCompletionState(requiresFullRefund: true));
+        // بازگشت وجه نداریم: پس از خطای مهلک، انتقال به پایان با پرچم پیگیری مالی توسط اپراتور
+        emit(const MachineCompletionState(requiresOperatorFollowUp: true));
       }
     });
 
     on<HardwareResponded>((event, emit) {
       if (state is MachineDispensingState) {
-        emit(const MachineCompletionState(requiresFullRefund: false));
+        emit(const MachineCompletionState(requiresOperatorFollowUp: false));
       }
     });
 

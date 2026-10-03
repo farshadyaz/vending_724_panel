@@ -299,8 +299,8 @@ class _BoardSimulatorScreenState extends State<BoardSimulatorScreen> {
   static const Map<BoardMode, String> _modeHelp = {
     BoardMode.success: 'همه کالاها پس از تأخیر تعیین‌شده، تحویل‌شده اعلام می‌شوند.',
     BoardMode.jam: 'رک‌هایی که شماره‌شان را وارد کنید، خطای H-1001 (MOTOR_JAM) می‌دهند و کالایی تحویل نمی‌شود.',
-    BoardMode.random: 'هر رک با احتمال تعیین‌شده خراب می‌شود (برای تست تحویل ناقص و بازگشت وجه جزئی).',
-    BoardMode.timeout: 'سفارش دریافت می‌شود ولی هیچ پاسخی داده نمی‌شود؛ پنل باید تایم‌اوت کند و بازگشت وجه کامل بدهد.',
+    BoardMode.random: 'هر رک با احتمال تعیین‌شده خراب می‌شود (برای تست تحویل ناقص و ثبت مطالبه مشتری).',
+    BoardMode.timeout: 'سفارش دریافت می‌شود ولی هیچ پاسخی داده نمی‌شود؛ پنل باید تایم‌اوت کند و پیام «تماس با اپراتور» را نشان بدهد.',
     BoardMode.drop: 'اتصال بلافاصله بعد از دریافت سفارش قطع می‌شود.',
   };
 
@@ -501,7 +501,7 @@ class _BoardSimulatorScreenState extends State<BoardSimulatorScreen> {
             Row(
               children: [
                 Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-                if (trailing != null) trailing,
+                ?trailing,
               ],
             ),
             const SizedBox(height: 10),

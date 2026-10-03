@@ -11,8 +11,7 @@
 /// پوز:
 ///   پنل ← پوز : {"type":"PAY","order_id":"ORD-1","amount":450000}
 ///   پوز ← پنل : {"type":"PAY_RESULT","order_id":"ORD-1","status":"APPROVED|DECLINED|CANCELLED","reference":"POS-123","message":""}
-///   پنل ← پوز : {"type":"REFUND","order_id":"ORD-1","amount":450000,"reference":"POS-123"}
-///   پوز ← پنل : {"type":"REFUND_RESULT","order_id":"ORD-1","status":"REFUNDED|FAILED","message":""}
+///   (بازگشت وجه وجود ندارد: اگر کالا تحویل نشد، مشتری برای پیگیری مالی با اپراتور تماس می‌گیرد)
 /// هر دو:
 ///   پنل ← دستگاه : {"type":"PING"}   |   دستگاه ← پنل : {"type":"PONG","device":"BOARD_SIM"}
 class HwProtocol {
@@ -22,8 +21,6 @@ class HwProtocol {
   static const String dispenseResult = 'DISPENSE_RESULT';
   static const String pay = 'PAY';
   static const String payResult = 'PAY_RESULT';
-  static const String refund = 'REFUND';
-  static const String refundResult = 'REFUND_RESULT';
 }
 
 /// نتیجه تست اتصال به یک دستگاه
@@ -45,17 +42,6 @@ class PaymentResult {
   const PaymentResult(this.status, {this.reference, this.message = ''});
 
   bool get approved => status == PaymentStatus.approved;
-}
-
-class RefundResult {
-  final bool success;
-  final String message;
-
-  /// true = نتیجه بازگشت وجه نامعلوم است (درخواست فرستاده شد ولی پاسخ قطعی نرسید)؛
-  /// ممکن است پوز مبلغ را برگردانده باشد، پس نباید بدون بررسی دستی دوباره برگشت زده شود.
-  final bool uncertain;
-
-  const RefundResult(this.success, [this.message = '', this.uncertain = false]);
 }
 
 // ---------------- تحویل کالا ----------------

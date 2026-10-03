@@ -18,10 +18,11 @@ class MachineDispensingState extends MachineState {}
 class MachineFatalErrorState extends MachineState {}
 
 class MachineCompletionState extends MachineState {
-  final bool requiresFullRefund;
+  /// true = تحویل کالا نامعلوم ماند (تایم‌اوت/قطع ارتباط با برد)؛ مشتری باید با اپراتور تماس بگیرد
+  final bool requiresOperatorFollowUp;
   
-  const MachineCompletionState({this.requiresFullRefund = false});
+  const MachineCompletionState({this.requiresOperatorFollowUp = false});
 
   @override
-  List<Object> get props => [requiresFullRefund];
+  List<Object> get props => [requiresOperatorFollowUp];
 }

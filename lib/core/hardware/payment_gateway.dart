@@ -13,7 +13,6 @@ class PaymentSession {
 /// رابط پوز: امروز شبیه‌ساز (TCP) یا Mock داخلی، فردا پوز واقعی با پیاده‌سازی جدید همین رابط.
 abstract class PaymentGateway {
   PaymentSession startPayment({required String orderId, required int amount});
-  Future<RefundResult> refund({required String orderId, required int amount, String? reference});
   Future<DeviceCheck> ping();
 }
 
@@ -22,13 +21,11 @@ class TcpPosGateway implements PaymentGateway {
   final String host;
   final int port;
   final Duration payTimeout; // مهلت پرداخت مشتری
-  final Duration refundTimeout;
 
   const TcpPosGateway({
     required this.host,
     required this.port,
     this.payTimeout = const Duration(seconds: 90),
-    this.refundTimeout = const Duration(seconds: 20),
   });
 
   @override
@@ -67,34 +64,6 @@ class TcpPosGateway implements PaymentGateway {
   }
 
   @override
-  Future<RefundResult> refund({required String orderId, required int amount, String? reference}) async {
-    final call = NdjsonCall(
-      host: host,
-      port: port,
-      payload: {
-        'type': HwProtocol.refund,
-        'order_id': orderId,
-        'amount': amount,
-        'reference': reference,
-      },
-      responseTimeout: refundTimeout,
-    );
-    try {
-      final response = await call.future;
-      final ok = response['status'] == 'REFUNDED';
-      final message = (response['message'] ?? '').toString();
-      return RefundResult(ok, message.isEmpty ? (ok ? 'بازگشت وجه انجام شد' : 'بازگشت وجه ناموفق بود') : message);
-    } on TimeoutException {
-      // درخواست رسیده و پوز جواب نداده؛ ممکن است مبلغ برگشت خورده باشد
-      return const RefundResult(false, 'پوز در بازگشت وجه پاسخ نداد', true);
-    } on SocketException catch (e) {
-      return RefundResult(false, 'عدم ارتباط با پوز: ${e.message}', call.requestSent);
-    } catch (e) {
-      return RefundResult(false, 'خطای بازگشت وجه: $e', call.requestSent);
-    }
-  }
-
-  @override
   Future<DeviceCheck> ping() => pingDevice(host, port);
 }
 
@@ -120,12 +89,6 @@ class MockPosGateway implements PaymentGateway {
         completer.complete(const PaymentResult(PaymentStatus.cancelled, message: 'پرداخت توسط مشتری لغو شد'));
       }
     });
-  }
-
-  @override
-  Future<RefundResult> refund({required String orderId, required int amount, String? reference}) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    return const RefundResult(true, 'بازگشت وجه آزمایشی انجام شد');
   }
 
   @override

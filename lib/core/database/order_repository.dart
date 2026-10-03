@@ -10,10 +10,9 @@ class OrderStatus {
   static const String cancelled = 'CANCELLED'; // مشتری یا پوز پرداخت را لغو کرد
   static const String paymentTimeout = 'PAYMENT_TIMEOUT'; // پوز پاسخ نداد (وضعیت مبلغ نامعلوم)
   static const String posError = 'POS_ERROR'; // ارتباط با پوز برقرار نشد
-  static const String refunded = 'REFUNDED'; // کل مبلغ برگشت داده شد
-  static const String partialRefunded = 'PARTIAL_REFUNDED'; // بخشی از مبلغ برگشت داده شد
-  static const String refundFailed = 'REFUND_FAILED'; // بازگشت وجه خودکار ناموفق بود (پیگیری دستی)
-  static const String refundUnknown = 'REFUND_UNKNOWN'; // نتیجه بازگشت وجه نامعلوم است (اول پوز بررسی شود)
+  // بازگشت وجه خودکار نداریم: وقتی کالایی تحویل نشد یا نتیجه تحویل نامعلوم ماند، مشتری با اپراتور تماس می‌گیرد
+  // و مبلغ مطالبه‌شده در owed_amount ثبت می‌شود.
+  static const String settlementDue = 'SETTLEMENT_DUE'; // پرداخت شده ولی همه کالاها تحویل نشده؛ اپراتور باید با مشتری تسویه کند
   static const String needsReview = 'NEEDS_REVIEW'; // سفارش نیمه‌تمام ماند (قطع برق/بسته شدن برنامه)
 }
 
@@ -41,7 +40,7 @@ class OrderRepository {
   String _now() => DateTime.now().toIso8601String();
 
   /// ستون‌های جدید را در صورت نبودن اضافه می‌کند؛ بدون تغییر نسخه دیتابیس و بدون از دست رفتن اطلاعات:
-  ///  - Orders.pos_reference (کد مرجع پوز) و Orders.refunded_amount (مبلغ بازگشتی)
+  ///  - Orders.pos_reference (کد مرجع پوز) و Orders.owed_amount (مبلغی که اپراتور باید با مشتری تسویه کند)
   ///  - Order_Items.physical_address (آدرس فیزیکی رک؛ چون شماره رک با تغییر چیدمان عوض می‌شود)
   Future<Database> _dbWithColumns() async {
     final db = await _dbHelper.database;
@@ -51,8 +50,8 @@ class OrderRepository {
     if (!orderNames.contains('pos_reference')) {
       await db.execute('ALTER TABLE Orders ADD COLUMN pos_reference TEXT');
     }
-    if (!orderNames.contains('refunded_amount')) {
-      await db.execute('ALTER TABLE Orders ADD COLUMN refunded_amount INTEGER NOT NULL DEFAULT 0');
+    if (!orderNames.contains('owed_amount')) {
+      await db.execute('ALTER TABLE Orders ADD COLUMN owed_amount INTEGER NOT NULL DEFAULT 0');
     }
 
     final itemCols = await db.rawQuery('PRAGMA table_info(Order_Items)');
@@ -219,12 +218,13 @@ class OrderRepository {
     });
   }
 
-  /// ثبت نتیجه بازگشت وجه (status یکی از REFUNDED / PARTIAL_REFUNDED / REFUND_FAILED / REFUND_UNKNOWN)
-  Future<void> setRefund(String orderId, {required String status, required int amount}) async {
+  /// سفارش پرداخت‌شده‌ای که همه کالاهایش تحویل نشده: وضعیت SETTLEMENT_DUE و مبلغی که اپراتور باید
+  /// با مشتری تسویه کند (owed_amount) ثبت می‌شود.
+  Future<void> setSettlementDue(String orderId, {required int amount}) async {
     final db = await _dbWithColumns();
     await db.rawUpdate(
-      'UPDATE Orders SET pos_status = ?, refunded_amount = ? WHERE id = ?',
-      [status, amount, orderId],
+      'UPDATE Orders SET pos_status = ?, owed_amount = ? WHERE id = ?',
+      [OrderStatus.settlementDue, amount, orderId],
     );
   }
 
@@ -248,7 +248,7 @@ class OrderRepository {
 
   /// سفارش‌هایی که وسط کار مانده‌اند (برق رفت یا برنامه بسته شد) را علامت می‌زند تا تکنسین بررسی کند:
   ///  - سفارش PENDING: نتیجه پرداخت نامعلوم است
-  ///  - سفارش PAID که همه کالاهایش DELIVERED نشده؛ چون هر نتیجه نهایی دیگری (بازگشت وجه کامل/جزئی/ناموفق)
+  ///  - سفارش PAID که همه کالاهایش DELIVERED نشده؛ چون هر نتیجه نهایی دیگری (مثل SETTLEMENT_DUE)
   ///    وضعیت سفارش را از PAID تغییر می‌دهد، پس PAID با کالای تحویل‌نشده یعنی کار نیمه‌تمام مانده است
   /// فقط هنگام شروع برنامه صدا زده شود. تعداد سفارش‌های علامت‌خورده را برمی‌گرداند.
   Future<int> recoverInterruptedOrders() async {

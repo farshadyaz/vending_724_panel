@@ -15,7 +15,6 @@ enum CheckoutPhase {
   paying, // منتظر پرداخت روی پوز
   payFailed, // پرداخت انجام نشد
   dispensing, // برد در حال تحویل کالا
-  refunding, // بازگشت وجه
   done, // نتیجه نهایی
 }
 
@@ -29,9 +28,9 @@ enum PayFailKind {
 
 enum ResultKind {
   success, // همه کالاها تحویل شد
-  partial, // بخشی تحویل شد، مابقی برگشت داده می‌شود
-  failed, // هیچ کالایی تحویل نشد
-  unknown, // ارتباط با برد قطع شد؛ نتیجه نامعلوم، کل مبلغ برگشت داده می‌شود
+  partial, // بخشی تحویل شد؛ برای مابقی مشتری با اپراتور تماس می‌گیرد
+  failed, // هیچ کالایی تحویل نشد؛ مشتری با اپراتور تماس می‌گیرد
+  unknown, // ارتباط با برد قطع شد و نتیجه تحویل نامعلوم است؛ مشتری با اپراتور تماس می‌گیرد
 }
 
 enum ItemResult { pending, delivered, failed, unknown }
@@ -48,7 +47,7 @@ class CheckoutItem {
 
 /// نتیجه‌ای که صفحه خرید به صفحه انتخاب برمی‌گرداند
 class CheckoutOutcome {
-  /// پرداخت انجام شده و سفارش به نتیجه رسیده (تحویل یا بازگشت وجه) ← سبد خالی شود
+  /// پرداخت انجام شده و سفارش به نتیجه رسیده (تحویل یا ثبت مطالبه برای اپراتور) ← سبد خالی شود
   final bool clearCart;
 
   /// رک‌هایی که هنگام بررسی نهایی قابل خرید نبودند ← کالاهایشان از سبد برداشته شود
@@ -59,7 +58,9 @@ class CheckoutOutcome {
   const CheckoutOutcome({this.clearCart = false, this.invalidRacks = const <int>{}, this.message});
 }
 
-/// منطق کامل چرخه خرید: بررسی سبد ← ثبت سفارش ← پرداخت (پوز) ← تحویل (برد) ← ثبت نتیجه/موجودی ← بازگشت وجه.
+/// منطق کامل چرخه خرید: بررسی سبد ← ثبت سفارش ← پرداخت (پوز) ← تحویل (برد) ← ثبت نتیجه/موجودی.
+/// بازگشت وجه خودکار نداریم: اگر کالایی تحویل نشد، مبلغ آن به‌عنوان «مطالبه مشتری» (SETTLEMENT_DUE) ثبت می‌شود
+/// و مشتری برای پیگیری مالی با اپراتور تماس می‌گیرد.
 /// صفحه فقط وضعیت را نشان می‌دهد؛ تمام تصمیم‌ها اینجاست تا بدون رابط کاربری هم قابل تست باشد.
 class CheckoutController extends ChangeNotifier {
   final String orderId;
@@ -100,10 +101,7 @@ class CheckoutController extends ChangeNotifier {
   String _payFailMessage = '';
   ResultKind _resultKind = ResultKind.success;
   List<CartIssue> _issues = const [];
-  int _refundAmount = 0;
-  bool _refundSucceeded = true;
-  bool _refundUncertain = false;
-  String _refundMessage = '';
+  int _owedAmount = 0;
   bool _orderCreated = false;
   CheckoutOutcome? _outcome;
 
@@ -119,13 +117,8 @@ class CheckoutController extends ChangeNotifier {
   ResultKind get resultKind => _resultKind;
   List<CartIssue> get issues => _issues;
 
-  /// مبلغی که باید به مشتری برگردد (۰ = بازگشت وجهی لازم نبود)
-  int get refundAmount => _refundAmount;
-  bool get refundSucceeded => _refundSucceeded;
-
-  /// نتیجه بازگشت وجه نامعلوم است (ممکن است پوز مبلغ را برگردانده باشد)
-  bool get refundUncertain => _refundUncertain;
-  String get refundMessage => _refundMessage;
+  /// مبلغی که مشتری پرداخته ولی کالایش تحویل نشده و اپراتور باید با او تسویه کند (۰ = همه کالاها تحویل شد)
+  int get owedAmount => _owedAmount;
 
   /// کد پیگیری فقط وقتی معنا دارد که سفارش در دیتابیس ثبت شده باشد
   bool get hasTrackingCode => _orderCreated;
@@ -133,7 +126,7 @@ class CheckoutController extends ChangeNotifier {
   /// بعد از غیر null شدن، صفحه خرید بسته می‌شود
   CheckoutOutcome? get outcome => _outcome;
 
-  /// شناسه سفارش برای پیگیری مشتری با پشتیبانی
+  /// شناسه سفارش برای پیگیری مشتری با اپراتور
   String get trackingCode => orderId;
 
   /// مشتری فقط تا قبل از تأیید پرداخت می‌تواند انصراف بدهد
@@ -145,12 +138,11 @@ class CheckoutController extends ChangeNotifier {
       _phase == CheckoutPhase.payFailed &&
       (_payFailKind == PayFailKind.declined || _payFailKind == PayFailKind.boardUnavailable);
 
-  /// ثانیه‌های باقی‌مانده تا بسته شدن خودکار صفحه نتیجه (۰ = بسته نمی‌شود تا مشتری خودش دکمه را بزند)
+  /// ثانیه‌های باقی‌مانده تا بسته شدن خودکار صفحه نتیجه؛ وقتی مشتری باید با اپراتور تماس بگیرد زمان بیشتری
+  /// برای خواندن پیام و یادداشت کد پیگیری دارد (۰ = هنوز در مرحله نتیجه نیستیم)
   int get autoCloseSeconds {
     if (_phase != CheckoutPhase.done) return 0;
-    if (_resultKind == ResultKind.success) return 10;
-    if (_refundSucceeded) return 20;
-    return 0;
+    return _resultKind == ResultKind.success ? 10 : 60;
   }
 
   void _notify() {
@@ -190,7 +182,7 @@ class CheckoutController extends ChangeNotifier {
   }
 
   /// بررسی سبد ← بررسی در دسترس بودن برد ← ثبت سفارش ← پرداخت.
-  /// برد قبل از پرداخت بررسی می‌شود تا اگر خاموش یا قطع است، مشتری اصلاً پولی نپردازد و بازگشت وجه لازم نشود.
+  /// برد قبل از پرداخت بررسی می‌شود تا اگر خاموش یا قطع است، مشتری اصلاً پولی نپردازد و بعداً نیاز به تسویه با اپراتور پیش نیاید.
   Future<void> _begin() async {
     _setPhase(CheckoutPhase.validating);
 
@@ -364,7 +356,7 @@ class CheckoutController extends ChangeNotifier {
     _setPhase(CheckoutPhase.done);
   }
 
-  /// تایم‌اوت یا قطع ارتباط با برد: نتیجه تحویل نامعلوم است ← طبق سند معماری کل مبلغ برگردانده می‌شود
+  /// تایم‌اوت یا قطع ارتباط با برد: نتیجه تحویل نامعلوم است ← کل مبلغ سفارش برای تسویه توسط اپراتور ثبت می‌شود
   Future<void> _onFatalDispense(DispenseResult result) async {
     _bloc(HardwareTimeoutOccurred());
     _resultKind = ResultKind.unknown;
@@ -379,10 +371,10 @@ class CheckoutController extends ChangeNotifier {
     await _repo.log(
       'HARD',
       result.status == DispenseStatus.timeout ? 'BOARD_TIMEOUT' : 'BOARD_CONNECTION',
-      'تحویل سفارش $orderId نامعلوم ماند (${result.message}); کل مبلغ برگشت داده می‌شود و موجودی رک‌ها بررسی شود',
+      'تحویل سفارش $orderId نامعلوم ماند (${result.message}); موجودی رک‌ها بررسی شود',
     );
 
-    await _refund(totalAmount, full: true);
+    await _markSettlementDue(totalAmount);
   }
 
   Future<void> _onDispenseResult(DispenseResult result) async {
@@ -426,43 +418,21 @@ class CheckoutController extends ChangeNotifier {
     }
 
     _resultKind = deliveredCount > 0 ? ResultKind.partial : ResultKind.failed;
-    await _repo.log('OP', 'ORDER_PARTIAL', 'سفارش $orderId: $deliveredCount از ${items.length} کالا تحویل شد؛ بازگشت وجه $undeliveredAmount ریال');
-    await _refund(undeliveredAmount, full: deliveredCount == 0);
+    await _repo.log('OP', 'ORDER_PARTIAL', 'سفارش $orderId: $deliveredCount از ${items.length} کالا تحویل شد');
+    await _markSettlementDue(undeliveredAmount);
   }
 
-  // ---------------- بازگشت وجه ----------------
+  // ---------------- مطالبه مشتری (بدون بازگشت وجه) ----------------
 
-  Future<void> _refund(int amount, {required bool full}) async {
-    _setPhase(CheckoutPhase.refunding);
-    _refundAmount = amount;
-
-    RefundResult r;
-    try {
-      r = await _services!.payment.refund(orderId: orderId, amount: amount, reference: _reference);
-    } catch (e) {
-      r = RefundResult(false, 'خطای بازگشت وجه: $e');
-    }
-    _refundSucceeded = r.success;
-    _refundUncertain = !r.success && r.uncertain;
-    _refundMessage = r.message;
-
-    if (r.success) {
-      await _safe(
-        () => _repo.setRefund(orderId, status: full ? OrderStatus.refunded : OrderStatus.partialRefunded, amount: amount),
-        'refund-ok',
-      );
-      await _repo.log('OP', 'REFUND_OK', 'بازگشت وجه $amount ریال برای $orderId انجام شد');
-    } else if (r.uncertain) {
-      await _safe(() => _repo.setRefund(orderId, status: OrderStatus.refundUnknown, amount: 0), 'refund-unknown');
-      await _repo.log(
-        'HARD',
-        'REFUND_UNKNOWN',
-        'نتیجه بازگشت وجه $amount ریال برای $orderId نامعلوم است (${r.message}); اول وضعیت در پوز بررسی شود تا دوبار برگشت زده نشود',
-      );
-    } else {
-      await _safe(() => _repo.setRefund(orderId, status: OrderStatus.refundFailed, amount: 0), 'refund-failed');
-      await _repo.log('HARD', 'REFUND_FAILED', 'بازگشت وجه $amount ریال برای $orderId ناموفق بود (${r.message}); باید دستی پیگیری شود');
-    }
+  /// مبلغ کالاهای تحویل‌نشده ثبت می‌شود تا اپراتور با مشتری تسویه کند؛ مشتری با کد پیگیری سفارش با اپراتور تماس می‌گیرد.
+  Future<void> _markSettlementDue(int amount) async {
+    _owedAmount = amount;
+    await _safe(() => _repo.setSettlementDue(orderId, amount: amount), 'settlement-due');
+    await _repo.log(
+      'HARD',
+      'SETTLEMENT_DUE',
+      'سفارش $orderId: مبلغ $amount ریال از پرداخت مشتری (مرجع پوز: ${_reference ?? '-'}) بابت کالای تحویل‌نشده باید توسط اپراتور تسویه شود',
+    );
   }
 
   // ---------------- پایان ----------------

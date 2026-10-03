@@ -54,7 +54,6 @@ class _PosSimulatorScreenState extends State<PosSimulatorScreen> {
 
   PosMode _mode = PosMode.manual;
   double _delaySec = 2;
-  bool _failRefund = false;
 
   final List<_PendingPayment> _pending = [];
   final List<SimLogEntry> _log = [];
@@ -63,8 +62,6 @@ class _PosSimulatorScreenState extends State<PosSimulatorScreen> {
   int _approvedCount = 0;
   int _approvedTotal = 0;
   int _declinedCount = 0;
-  int _refundCount = 0;
-  int _refundTotal = 0;
 
   bool _disposed = false;
 
@@ -201,9 +198,6 @@ class _PosSimulatorScreenState extends State<PosSimulatorScreen> {
       case HwProtocol.pay:
         await _handlePay(socket, remote, msg);
         break;
-      case HwProtocol.refund:
-        await _handleRefund(socket, remote, msg);
-        break;
       default:
         _addLog('پیام ناشناخته از $remote', detail: line, level: SimLogLevel.warn);
         _send(socket, {'type': 'ERROR', 'message': 'نوع پیام ناشناخته'});
@@ -273,46 +267,11 @@ class _PosSimulatorScreenState extends State<PosSimulatorScreen> {
     );
   }
 
-  Future<void> _handleRefund(Socket socket, String remote, Map<String, dynamic> msg) async {
-    final String orderId = (msg['order_id'] ?? '').toString();
-    final int amount = (msg['amount'] as num?)?.toInt() ?? 0;
-    final String reference = (msg['reference'] ?? '-').toString();
-
-    _addLog('درخواست بازگشت وجه از $remote', detail: '$orderId — ${simMoney(amount)} ریال — مرجع: $reference');
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (!mounted) return;
-
-    if (_failRefund) {
-      _send(socket, {
-        'type': HwProtocol.refundResult,
-        'order_id': orderId,
-        'status': 'FAILED',
-        'message': 'خطا در شبکه بانکی',
-      });
-      _addLog('بازگشت وجه ناموفق (طبق تنظیم شبیه‌ساز)', detail: orderId, level: SimLogLevel.error);
-      return;
-    }
-
-    _send(socket, {
-      'type': HwProtocol.refundResult,
-      'order_id': orderId,
-      'status': 'REFUNDED',
-      'message': 'بازگشت وجه انجام شد',
-    });
-    setState(() {
-      _refundCount++;
-      _refundTotal += amount;
-    });
-    _addLog('بازگشت وجه انجام شد', detail: '$orderId — ${simMoney(amount)} ریال', level: SimLogLevel.ok);
-  }
-
   void _resetCounters() {
     setState(() {
       _approvedCount = 0;
       _approvedTotal = 0;
       _declinedCount = 0;
-      _refundCount = 0;
-      _refundTotal = 0;
     });
   }
 
@@ -420,14 +379,6 @@ class _PosSimulatorScreenState extends State<PosSimulatorScreen> {
                   onChanged: (v) => setState(() => _delaySec = v),
                 ),
               ],
-              const SizedBox(height: 4),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('بازگشت وجه ناموفق باشد', style: TextStyle(fontSize: 14)),
-                subtitle: const Text('برای تست خطای بازگشت وجه در پنل', style: TextStyle(fontSize: 12)),
-                value: _failRefund,
-                onChanged: (v) => setState(() => _failRefund = v),
-              ),
             ],
           ),
         ),
@@ -445,14 +396,12 @@ class _PosSimulatorScreenState extends State<PosSimulatorScreen> {
                 children: [
                   _stat('پرداخت موفق', '$_approvedCount', Colors.green.shade700),
                   _stat('پرداخت ردشده', '$_declinedCount', Colors.red.shade700),
-                  _stat('بازگشت وجه', '$_refundCount', Colors.orange.shade800),
                 ],
               ),
               const SizedBox(height: 10),
               Row(
                 children: [
                   _stat('جمع دریافتی (ریال)', simMoney(_approvedTotal), Colors.green.shade800),
-                  _stat('جمع بازگشتی (ریال)', simMoney(_refundTotal), Colors.orange.shade900),
                 ],
               ),
             ],
@@ -576,7 +525,7 @@ class _PosSimulatorScreenState extends State<PosSimulatorScreen> {
             Row(
               children: [
                 Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-                if (trailing != null) trailing,
+                ?trailing,
               ],
             ),
             const SizedBox(height: 10),

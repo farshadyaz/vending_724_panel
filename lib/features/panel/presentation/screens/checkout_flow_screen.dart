@@ -4,7 +4,7 @@ import '../../../../core/utils/extensions.dart';
 import '../../../admin/presentation/widgets/product_thumb.dart';
 import '../controllers/checkout_controller.dart';
 
-/// صفحه تمام‌صفحه خرید: پرداخت با پوز ← تحویل کالا ← نتیجه (و بازگشت وجه در صورت نیاز).
+/// صفحه تمام‌صفحه خرید: پرداخت با پوز ← تحویل کالا ← نتیجه (و پیام تماس با اپراتور برای پیگیری مالی در صورت نیاز).
 /// منطق در CheckoutController است؛ این صفحه فقط وضعیت را نشان می‌دهد و با CheckoutOutcome بسته می‌شود.
 class CheckoutFlowScreen extends StatefulWidget {
   final CheckoutController controller;
@@ -186,13 +186,6 @@ class _CheckoutFlowScreenState extends State<CheckoutFlowScreen> {
           ..._itemRows(),
         ];
 
-      case CheckoutPhase.refunding:
-        return [
-          _badge(Icons.currency_exchange, Colors.orange.shade800, busy: true),
-          _title('در حال بازگشت وجه...'),
-          _subtitle('مبلغ ${_c.refundAmount.toRial} در حال بازگشت به کارت شماست.'),
-        ];
-
       case CheckoutPhase.done:
         return _resultContent();
     }
@@ -232,7 +225,7 @@ class _CheckoutFlowScreenState extends State<CheckoutFlowScreen> {
       if (uncertain) ...[
         const SizedBox(height: 10),
         _note(
-          'اگر مبلغی از حساب شما کسر شده، کد پیگیری زیر را به پشتیبانی اعلام کنید.',
+          'اگر مبلغی از حساب شما کسر شده، کد پیگیری زیر را به اپراتور اعلام کنید.',
           Colors.orange.shade800,
         ),
       ],
@@ -263,25 +256,25 @@ class _CheckoutFlowScreenState extends State<CheckoutFlowScreen> {
         break;
       case ResultKind.partial:
         title = 'بخشی از کالاها تحویل شد';
-        subtitle = 'کالاهای تحویل‌نشده در لیست زیر مشخص است و مبلغ آن‌ها بازگردانده می‌شود.';
+        subtitle = 'کالاهای تحویل‌نشده در لیست زیر مشخص است.';
         icon = Icons.warning_amber_rounded;
         color = Colors.orange.shade800;
         break;
       case ResultKind.failed:
         title = 'تحویل کالا انجام نشد';
-        subtitle = 'متأسفانه کالایی تحویل داده نشد و کل مبلغ پرداختی بازگردانده می‌شود.';
+        subtitle = 'متأسفانه کالایی تحویل داده نشد.';
         icon = Icons.error_outline;
         color = Colors.red.shade600;
         break;
       case ResultKind.unknown:
         title = 'ارتباط با دستگاه تحویل قطع شد';
-        subtitle = 'نتیجه تحویل مشخص نیست و برای اطمینان کل مبلغ پرداختی بازگردانده می‌شود. اگر کالایی تحویل گرفته‌اید، لطفاً به پشتیبانی اطلاع دهید.';
+        subtitle = 'نتیجه تحویل مشخص نیست. اگر کالایی تحویل نگرفتید، با اپراتور تماس بگیرید.';
         icon = Icons.help_outline;
         color = Colors.red.shade600;
         break;
     }
 
-    final bool hasRefund = _c.refundAmount > 0;
+    final bool hasOwed = _c.owedAmount > 0;
     return [
       _badge(icon, color),
       _title(title),
@@ -292,20 +285,14 @@ class _CheckoutFlowScreenState extends State<CheckoutFlowScreen> {
         const SizedBox(height: 8),
         _addonsLine(),
       ],
-      if (hasRefund) ...[
+      if (hasOwed) ...[
         const SizedBox(height: 14),
-        if (_c.refundSucceeded)
-          _note('بازگشت وجه ثبت شد: ${_c.refundAmount.toRial}\nواریز به کارت طبق زمان‌بندی بانک انجام می‌شود.', Colors.green.shade700)
-        else if (_c.refundUncertain)
-          _note(
-            'نتیجه بازگشت وجه ${_c.refundAmount.toRial} مشخص نیست و ممکن است به حساب شما برگشته باشد؛ لطفاً کد پیگیری زیر را به پشتیبانی اعلام کنید.',
-            Colors.orange.shade800,
-          )
-        else
-          _note(
-            'بازگشت وجه خودکار انجام نشد. مبلغ ${_c.refundAmount.toRial} باید به شما بازگردانده شود؛ لطفاً کد پیگیری زیر را به پشتیبانی اعلام کنید.',
-            Colors.red.shade700,
-          ),
+        _note(
+          _c.resultKind == ResultKind.unknown
+              ? 'پرداخت شما ثبت شده و نتیجه تحویل مشخص نیست. برای پیگیری مالی با اپراتور تماس بگیرید و کد پیگیری زیر را اعلام کنید.'
+              : 'مبلغ ${_c.owedAmount.toRial} مربوط به کالاهای تحویل‌نشده است. برای پیگیری مالی با اپراتور تماس بگیرید و کد پیگیری زیر را اعلام کنید.',
+          Colors.red.shade700,
+        ),
       ],
       const SizedBox(height: 20),
       _primaryButton('پایان', _c.finish),
