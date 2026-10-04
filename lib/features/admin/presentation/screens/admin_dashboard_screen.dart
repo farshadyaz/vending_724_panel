@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import '../../../../core/database/report_repository.dart';
 import '../widgets/add_product_dialog.dart';
 import '../widgets/product_list_dialog.dart';
 import '../widgets/rack_layout_dialog.dart';
 import '../widgets/machine_settings_dialog.dart';
 import '../widgets/network_settings_dialog.dart';
+import 'receivables_screen.dart';
+import 'sales_report_screen.dart';
+import 'system_logs_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -16,6 +20,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   bool _isLoggedIn = false;
   String _selectedRole = 'operator';
   String _enteredPin = '';
+  int _attentionCount = 0; // تعداد موارد بازی که اپراتور باید پیگیری کند (نشان روی کارت «مطالبات مشتریان»)
+
+  Future<void> _loadAttentionCount() async {
+    try {
+      final n = await ReportRepository().openAttentionCount();
+      if (mounted) setState(() => _attentionCount = n);
+    } catch (e) {
+      debugPrint('ADMIN attention count failed: $e');
+    }
+  }
 
   final Map<String, String> _rolePins = {
     'operator': '111111',
@@ -44,6 +58,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       setState(() {
         _isLoggedIn = true;
       });
+      _loadAttentionCount();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('ورود موفق با نقش: ${_getRoleName(_selectedRole)}', style: const TextStyle(fontFamily: 'Vazir', fontSize: 16)),
@@ -70,6 +85,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       case 'technician': return 'تیم فنی و تولید';
       default: return '';
     }
+  }
+
+  /// باز کردن یک صفحه تمام‌صفحه؛ بعد از برگشت، نشان موارد نیازمند پیگیری تازه می‌شود
+  Future<void> _openScreen(Widget screen) async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+    if (mounted) _loadAttentionCount();
   }
 
   void _openModulePopup(BuildContext context, String moduleTitle) {
@@ -107,6 +128,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         barrierDismissible: false,
         builder: (context) => const NetworkSettingsDialog(),
       );
+      return;
+    } else if (moduleTitle == 'مطالبات مشتریان') {
+      _openScreen(ReceivablesScreen(roleName: _getRoleName(_selectedRole)));
+      return;
+    } else if (moduleTitle == 'آمار فروش') {
+      _openScreen(SalesReportScreen(roleName: _getRoleName(_selectedRole)));
+      return;
+    } else if (moduleTitle == 'لاگ‌های سیستم پنل') {
+      _openScreen(const SystemLogsScreen(category: LogCategory.panel));
+      return;
+    } else if (moduleTitle == 'خطا / لاگ برد الکترونیکی') {
+      _openScreen(const SystemLogsScreen(category: LogCategory.board));
       return;
     }
 
@@ -302,6 +335,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Widget _buildDashboardContent() {
     final List<Map<String, dynamic>> allCards = [
+      {'id': 13, 'title': 'مطالبات مشتریان', 'icon': Icons.payments_outlined, 'roles': ['operator', 'owner', 'technician']},
       {'id': 1, 'title': 'لیست محصولات', 'icon': Icons.list_alt_outlined, 'roles': ['operator', 'owner', 'technician']},
       {'id': 2, 'title': 'افزودن محصول', 'icon': Icons.add_box_outlined, 'roles': ['operator', 'owner', 'technician']},
       {'id': 12, 'title': 'تنظیمات دستگاه', 'icon': Icons.settings_applications_outlined, 'roles': ['owner', 'technician']},
@@ -330,19 +364,38 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 final card = permittedCards[index];
                 return Container(
                   margin: const EdgeInsets.symmetric(vertical: 6.0),
-                  decoration: BoxDecoration(
+                  // رنگ و حاشیه روی خود Material است تا افکت لمس ListTile دیده شود
+                  child: Material(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
-                  ),
-                  child: ListTile(
+                    clipBehavior: Clip.antiAlias,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    child: ListTile(
                     leading: Icon(card['icon'], color: Colors.blueGrey.shade700, size: 26),
                     title: Text(
                       card['title'],
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87),
                     ),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (card['id'] == 13 && _attentionCount > 0)
+                          Container(
+                            margin: const EdgeInsetsDirectional.only(end: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                            decoration: BoxDecoration(color: Colors.red.shade600, borderRadius: BorderRadius.circular(12)),
+                            child: Text(
+                              '$_attentionCount',
+                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                      ],
+                    ),
                     onTap: () => _openModulePopup(context, card['title']),
+                    ),
                   ),
                 );
               },

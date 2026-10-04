@@ -237,7 +237,7 @@ class _CheckoutFlowScreenState extends State<CheckoutFlowScreen> {
       _c.canRetryPayment ? _secondaryButton('بازگشت به سبد خرید', _c.leave) : _primaryButton('بازگشت به سبد خرید', _c.leave),
       if (_c.hasTrackingCode) ...[
         const SizedBox(height: 12),
-        _trackingCode(),
+        _trackingCode(prominent: uncertain),
       ],
     ];
   }
@@ -305,7 +305,7 @@ class _CheckoutFlowScreenState extends State<CheckoutFlowScreen> {
         ),
       ],
       const SizedBox(height: 12),
-      _trackingCode(),
+      _trackingCode(prominent: hasOwed),
     ];
   }
 
@@ -465,7 +465,31 @@ class _CheckoutFlowScreenState extends State<CheckoutFlowScreen> {
     );
   }
 
-  Widget _trackingCode() {
+  /// کد پیگیری سفارش؛ وقتی مشتری باید با اپراتور تماس بگیرد (prominent) درشت و در کادر نمایش داده می‌شود تا بتواند آن را بخواند
+  Widget _trackingCode({bool prominent = false}) {
+    if (prominent) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF3F5F8),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Column(
+          children: [
+            Text('کد پیگیری (هنگام تماس با اپراتور اعلام کنید)', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+            const SizedBox(height: 6),
+            Directionality(
+              textDirection: TextDirection.ltr,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: SelectableText(_c.trackingCode, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: _ink, letterSpacing: 1)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [

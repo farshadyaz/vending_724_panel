@@ -41,26 +41,43 @@ class OrderRepository {
 
   /// ستون‌های جدید را در صورت نبودن اضافه می‌کند؛ بدون تغییر نسخه دیتابیس و بدون از دست رفتن اطلاعات:
   ///  - Orders.pos_reference (کد مرجع پوز) و Orders.owed_amount (مبلغی که اپراتور باید با مشتری تسویه کند)
+  ///  - Orders.resolved_at / resolved_by (زمان و نقشی که مورد نیازمند پیگیری را بسته است)
   ///  - Order_Items.physical_address (آدرس فیزیکی رک؛ چون شماره رک با تغییر چیدمان عوض می‌شود)
+  ///  - ایندکس‌های Order_Items / Orders / System_Logs برای سرعت گزارش‌ها
   Future<Database> _dbWithColumns() async {
     final db = await _dbHelper.database;
-
-    final orderCols = await db.rawQuery('PRAGMA table_info(Orders)');
-    final orderNames = orderCols.map((c) => c['name'].toString()).toSet();
-    if (!orderNames.contains('pos_reference')) {
-      await db.execute('ALTER TABLE Orders ADD COLUMN pos_reference TEXT');
-    }
-    if (!orderNames.contains('owed_amount')) {
-      await db.execute('ALTER TABLE Orders ADD COLUMN owed_amount INTEGER NOT NULL DEFAULT 0');
-    }
-
-    final itemCols = await db.rawQuery('PRAGMA table_info(Order_Items)');
-    final itemNames = itemCols.map((c) => c['name'].toString()).toSet();
-    if (!itemNames.contains('physical_address')) {
-      await db.execute('ALTER TABLE Order_Items ADD COLUMN physical_address INTEGER');
+    await _addMissingColumns(db, 'Orders', const {
+      'pos_reference': 'TEXT',
+      'owed_amount': 'INTEGER NOT NULL DEFAULT 0',
+      'resolved_at': 'TEXT',
+      'resolved_by': 'TEXT',
+    });
+    await _addMissingColumns(db, 'Order_Items', const {
+      'physical_address': 'INTEGER',
+    });
+    // ایندکس‌ها برای سریع ماندن گزارش‌ها و لاگ‌ها بعد از ماه‌ها فروش
+    for (final sql in const [
+      'CREATE INDEX IF NOT EXISTS idx_order_items_order ON Order_Items (order_id)',
+      'CREATE INDEX IF NOT EXISTS idx_orders_timestamp ON Orders (timestamp)',
+      'CREATE INDEX IF NOT EXISTS idx_orders_status ON Orders (pos_status, resolved_at)',
+      'CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON System_Logs (timestamp)',
+    ]) {
+      await db.execute(sql);
     }
     return db;
   }
+
+  Future<void> _addMissingColumns(Database db, String table, Map<String, String> columns) async {
+    final existing = (await db.rawQuery('PRAGMA table_info($table)')).map((c) => c['name'].toString()).toSet();
+    for (final entry in columns.entries) {
+      if (!existing.contains(entry.key)) {
+        await db.execute('ALTER TABLE $table ADD COLUMN ${entry.key} ${entry.value}');
+      }
+    }
+  }
+
+  /// پایگاه داده‌ای که همه ستون‌های سفارش در آن موجود است؛ گزارش‌ها قبل از اولین خرید هم از آن استفاده می‌کنند.
+  Future<Database> ensureSchema() => _dbWithColumns();
 
   // ---------------- بررسی سبد ----------------
 
